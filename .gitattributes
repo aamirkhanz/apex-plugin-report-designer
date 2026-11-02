@@ -1,0 +1,6 @@
+*.sql text eol=lf
+*.pls text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.png binary

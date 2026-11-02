@@ -1,0 +1,53 @@
+{
+  "name": "Report Designer",
+  "version": "1.0",
+  "description": "<p>Users design report templates in the page and generate them as PDF, Word and Excel files from your data.</p><p>Source: any region source (SQL query, table or REST source). Its rows are the report data; Page Items to Submit and Faceted Search filters apply. Designer: drag blocks onto the page (heading, text, fields, table, image, line, space, page break), click a block to edit it, insert fields such as {CUSTOMER} or totals such as {SUM:AMOUNT|currency}. Tables have column formats, totals, row groups with subtotals, striped rows and borders. The report can make one section per value of a column (for example one invoice per order), each on a new page and, in Excel, on its own sheet. Page size, orientation, margins, colors, logo, header and footer with page numbers, date format and currency symbol. Templates are saved in a table (default TX_REPORT_TEMPLATES, see the Reference page for the script), per Template Group and Owner; shared templates can be used by everyone and copied with Save As. Report mode shows the saved templates with a preview and download buttons only.</p><p>Live demo: sign in as demo with the password Demo.</p><p>Requires Oracle APEX 26.2 or later.</p>",
+  "keywords": [
+    "oracle",
+    "apex",
+    "plugin",
+    "techrevx",
+    "report",
+    "pdf",
+    "word",
+    "excel",
+    "docx",
+    "xlsx",
+    "template",
+    "designer",
+    "invoice"
+  ],
+  "homepage": "https://github.com/aamirkhanz/apex-plugin-report-designer",
+  "bugs": {
+    "url": "https://github.com/aamirkhanz/apex-plugin-report-designer/issues",
+    "email": "aamir_sohail@live.com"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "TechRevX",
+    "email": "aamir_sohail@live.com",
+    "url": "https://www.techrevx.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aamirkhanz/apex-plugin-report-designer.git"
+  },
+  "oracle": {
+    "versions": [
+      "19c",
+      "21c",
+      "23ai"
+    ],
+    "apex": {
+      "versions": [
+        "26.2"
+      ],
+      "plugin": {
+        "internalName": "COM.TECHREVX.REPORT_DESIGNER",
+        "type": "region",
+        "demo": "https://oracleapex.com/ords/r/aamirkhanz/plugins/report-designer",
+        "previewImage": "https://raw.githubusercontent.com/aamirkhanz/apex-plugin-report-designer/main/screenshots/preview.png"
+      }
+    }
+  }
+}

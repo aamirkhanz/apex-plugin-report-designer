@@ -3,7 +3,7 @@
 --         techrevx.reportDesigner.init (report-designer.js). The report data is loaded with AJAX (DATA).
 -- ajax:   x01 = DATA    rows of the region source: { columns: [ { name, type } ], rows: [ [ ... ] ], truncated }
 --         x01 = LIST    the templates of this region's group the user can see (own and shared ones)
---         x01 = LOAD    one template (x02 = id)
+--         x01 = LOAD    one template (x02 = id, or x03 = name)
 --         x01 = SAVE    inserts (x02 empty) or updates an own template: x03 = name, x04 = description,
 --                       x05 = shared (Y/N), p_clob_01 = template JSON. Designer mode only.
 --         x01 = DELETE  deletes an own template (x02 = id). Designer mode only.
@@ -72,8 +72,11 @@ exception
         raise;
 end write_list;
 
-procedure write_template( p_region in apex_plugin.t_region, p_id in number ) is
+-- one template, by ID or (when p_id is null) by name; with a name, the user's own template comes before a shared one.
+-- Writes it as a JSON object, nested under p_object when given.
+procedure write_template( p_region in apex_plugin.t_region, p_id in number, p_name in varchar2 default null, p_object in varchar2 default null ) is
     l_cursor sys_refcursor;
+    l_id     number;
     l_name   varchar2(255);
     l_desc   varchar2(4000);
     l_json   clob;
@@ -82,17 +85,20 @@ procedure write_template( p_region in apex_plugin.t_region, p_id in number ) is
     l_me     varchar2(255) := owner_name( p_region );
 begin
     open l_cursor for
-        'select name, description, template, owner, is_shared from ' || table_name( p_region )
-        || ' where template_id = :id and template_group = :grp and ( owner = :me or is_shared = ''Y'' )'
-        using p_id, group_name( p_region ), l_me;
-    fetch l_cursor into l_name, l_desc, l_json, l_owner, l_shared;
+        'select template_id, name, description, template, owner, is_shared from ' || table_name( p_region )
+        || ' where ( template_id = :id or ( :id2 is null and upper( name ) = upper( :name ) ) )'
+        || '   and template_group = :grp and ( owner = :me or is_shared = ''Y'' )'
+        || ' order by case when owner = :me2 then 0 else 1 end, updated_on desc'
+        using p_id, p_id, p_name, group_name( p_region ), l_me, l_me;
+    fetch l_cursor into l_id, l_name, l_desc, l_json, l_owner, l_shared;
     if l_cursor%notfound then
         close l_cursor;
-        raise_application_error( -20001, 'Report Designer: the template was not found or is not shared with you.' );
+        raise_application_error( -20001, 'Report Designer: the template ' || case when p_id is null then '"' || p_name || '" ' end
+                                         || 'was not found in group ' || group_name( p_region ) || ', or it is not shared with you.' );
     end if;
     close l_cursor;
-    apex_json.open_object;
-    apex_json.write( 'id', p_id );
+    apex_json.open_object( p_object );
+    apex_json.write( 'id', l_id );
     apex_json.write( 'name', l_name );
     apex_json.write( 'description', l_desc );
     apex_json.write( 'shared', l_shared = 'Y' );
@@ -244,6 +250,17 @@ begin
     apex_json.write( 'sharing', p_region.attributes.get_varchar2( 'ALLOW_SHARING' ) = 'Y' );
     apex_json.write( 'user', v( 'APP_USER' ) );
     apex_json.write( 'templateItem', l_item );
+    apex_json.write( 'buttons', p_region.attributes.get_varchar2( 'BUTTONS' ) );
+    apex_json.write( 'defaultFormat', p_region.attributes.get_varchar2( 'DEFAULT_FORMAT' ) );
+    -- Download Only: the named template comes with the page, so a button can download at once
+    if p_region.attributes.get_varchar2( 'MODE' ) = 'download' and p_region.attributes.get_varchar2( 'TEMPLATE_NAME' ) is not null then
+        begin
+            write_template( p_region, null, p_region.attributes.get_varchar2( 'TEMPLATE_NAME', p_do_substitutions => true ), 'initial' );
+        exception
+            when others then
+                apex_json.write( 'templateError', regexp_replace( sqlerrm, '^ORA-\d+: ' ) );
+        end;
+    end if;
     if l_item is not null then
         apex_json.write( 'templateId', v( l_item ) );
     end if;
@@ -252,8 +269,12 @@ begin
     l_json := apex_json.get_clob_output;
     apex_json.free_output;
 
-    sys.htp.p( '<div id="' || apex_escape.html_attribute( p_region.static_id ) || '_report" class="tx-Rd" style="height:'
-               || nvl( p_region.attributes.get_number( 'HEIGHT' ), 760 ) || 'px"></div>' );
+    sys.htp.p( case
+                   when p_region.attributes.get_varchar2( 'MODE' ) = 'download'
+                       then '<div id="' || apex_escape.html_attribute( p_region.static_id ) || '_report" class="tx-Rd-hidden" hidden></div>'
+                   else '<div id="' || apex_escape.html_attribute( p_region.static_id ) || '_report" class="tx-Rd" style="height:'
+                        || nvl( p_region.attributes.get_number( 'HEIGHT' ), 760 ) || 'px"></div>'
+               end );
     sys.htp.p( '<script type="application/json" id="' || apex_escape.html_attribute( p_region.static_id ) || '_report_cfg">' );
     apex_util.prn( p_clob => replace( l_json, '</', '<\/' ), p_escape => false );
     sys.htp.p( '</script>' );
@@ -274,7 +295,7 @@ begin
         when 'DATA' then
             write_data( p_region );
         when 'LOAD' then
-            write_template( p_region, to_number( apex_application.g_x02 default null on conversion error ) );
+            write_template( p_region, to_number( apex_application.g_x02 default null on conversion error ), apex_application.g_x03 );
         when 'SAVE' then
             save_template( p_region );
         when 'DELETE' then

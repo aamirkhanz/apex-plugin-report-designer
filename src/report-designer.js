@@ -23,7 +23,10 @@
  * Every output is built from the same intermediate model (build()), so the preview, PDF (pdfmake), Word (docx) and
  * Excel (ExcelJS) show the same report. The libraries are loaded on the first download.
  *
- * apex.region( id ).generate( format ) / refresh() / openTemplate( id ) / getTemplate() / setTemplate( json ) / save()
+ * Modes: designer, report (pick a template and download) and download (hidden; cfg.buttons download cfg.initial, the template
+ * named in the region, after reading the data again).
+ *
+ * apex.region( id ).generate( format, template ) / refresh() / openTemplate( id or name ) / getTemplate() / setTemplate( json ) / save()
  * Events on the region: tx-report-generate { format, fileName, templateId, templateName }, tx-report-save { id, name }.
  */
 ( function( $, apex ) {
@@ -1090,10 +1093,50 @@
             this.undoStack = [];
             this.redoStack = [];
             this.tab = "report";
+            this.headless = this.cfg.mode === "download";
+            if ( this.headless ) { this.initHeadless(); return; }
             this.build();
             this.snapshot( true );
             this.registerRegion();
-            this.loadData().then( () => this.openInitial() );
+            this.loadData().catch( e => this.showError( e ) ).then( () => this.openInitial() );
+        }
+
+        // Download Only: nothing on the page; the named template came with the page, the buttons download it
+        initHeadless() {
+            if ( this.cfg.initial ) { this.useTemplate( this.cfg.initial ); }
+            else if ( this.cfg.templateError ) { apex.debug.warn( "Report Designer: " + this.cfg.templateError ); }
+            this.registerRegion();
+            if ( this.cfg.buttons ) {
+                $( document ).on( "click", this.cfg.buttons, e => {
+                    e.preventDefault();
+                    this.generate( e.currentTarget.getAttribute( "data-format" ), null, e.currentTarget );
+                } );
+            }
+        }
+
+        // a template as LOAD returns it: { id, name, description, shared, mine, owner, template (JSON text) }
+        useTemplate( res ) {
+            let tpl = null;
+            try { tpl = typeof res.template === "string" ? JSON.parse( res.template || "{}" ) : res.template; } catch ( e ) { apex.debug.warn( "Report Designer: the template is not valid JSON" ); }
+            this.setTemplate( tpl, { id: res.id, name: res.name, description: res.description || "", shared: !!res.shared, mine: !!res.mine, owner: res.owner } );
+        }
+
+        // downloads a report: optionally another template first (ID or name); in Download Only mode the data is read
+        // again first, so page items set just before (Page Items to Submit) are used
+        generate( format, template, btn ) {
+            format = format || this.cfg.defaultFormat || this.formats[ 0 ] || "pdf";
+            if ( this.headless && !template && !this.meta.name ) {
+                this.showError( this.cfg.templateError || "Report Designer: set the region's Template attribute." );
+                return Promise.resolve();
+            }
+            const spin = this.headless ? apex.util.showSpinner() : null;
+            if ( btn ) { btn.disabled = true; }
+            let p = Promise.resolve();
+            if ( template !== undefined && template !== null && template !== "" ) { p = p.then( () => this.openTemplate( template ) ); }
+            if ( this.headless ) { p = p.then( () => this.loadData() ); }
+            return p.then( () => this.download( format, this.headless ? null : btn ) )
+                .catch( e => this.showError( e ) )
+                .finally( () => { if ( spin ) { spin.remove(); } if ( btn ) { btn.disabled = false; } } );
         }
 
         // ---------- markup ----------
@@ -1179,7 +1222,7 @@
             } );
             this.tplSelect.addEventListener( "change", () => {
                 const v = this.tplSelect.value;
-                this.confirmDiscard( () => this.openTemplate( v ), () => { this.tplSelect.value = this.meta.id || ""; } );
+                this.confirmDiscard( () => this.openTemplate( v ).catch( e => this.showError( e ) ), () => { this.tplSelect.value = this.meta.id || ""; } );
             } );
             if ( !this.editable ) { return; }
 
@@ -1294,19 +1337,21 @@
             apex.message.showErrors( [ { type: "error", location: "page", message: String( e && e.message || e ).replace( /^ORA-\d+:\s*/, "" ), unsafe: true } ] );
         }
 
+        // reads the region's data; rejects on errors (callers show them)
         loadData() {
-            const spin = apex.util.showSpinner( $( this.stage ) );
+            const spin = this.headless ? null : apex.util.showSpinner( $( this.stage ) );
             return this.ajax( "DATA" ).then( res => {
                 this.data = new Data( res );
+                if ( this.headless ) { return; }
                 this.renderFields();
                 this.render();
-            } ).catch( e => this.showError( e ) ).finally( () => spin.remove() );
+            } ).finally( () => { if ( spin ) { spin.remove(); } } );
         }
 
         openInitial() {
             const want = this.cfg.templateId, list = this.templates;
             const pick = list.find( t => String( t.id ) === String( want ) ) || list.find( t => t.mine ) || list[ 0 ];
-            if ( pick ) { return this.openTemplate( pick.id ); }
+            if ( pick ) { return this.openTemplate( pick.id ).catch( e => this.showError( e ) ); }
             if ( this.editable ) {
                 this.setTemplate( starter( "list", this.data ), { id: null, name: "New report", description: "", shared: false, mine: true } );
                 this.setStatus( "New template, not saved yet" );
@@ -1328,19 +1373,20 @@
             this.tplSelect.disabled = !this.templates.length && !this.editable;
         }
 
-        openTemplate( id ) {
-            if ( !id ) { return Promise.resolve(); }
-            return this.ajax( "LOAD", { x02: id } ).then( res => {
-                let tpl = null;
-                try { tpl = JSON.parse( res.template || "{}" ); } catch ( e ) { apex.debug.warn( "Report Designer: the template is not valid JSON" ); }
-                this.setTemplate( tpl, { id: res.id, name: res.name, description: res.description || "", shared: !!res.shared, mine: !!res.mine, owner: res.owner } );
+        // a template by ID (number) or by name; rejects when it is not found
+        openTemplate( idOrName ) {
+            if ( !idOrName ) { return Promise.resolve(); }
+            const byId = /^\d+$/.test( String( idOrName ) );
+            return this.ajax( "LOAD", byId ? { x02: idOrName } : { x03: idOrName } ).then( res => {
+                this.useTemplate( res );
                 if ( this.cfg.templateItem ) { apex.item( this.cfg.templateItem ).setValue( String( res.id ) ); }
-            } ).catch( e => this.showError( e ) );
+            } );
         }
 
         setTemplate( tpl, meta ) {
             this.tpl = normalize( tpl );
             if ( meta ) { this.meta = meta; }
+            if ( this.headless ) { return; }
             this.selected = null;
             this.undoStack = [];
             this.redoStack = [];
@@ -2049,7 +2095,7 @@
         download( format, btn ) {
             const info = FORMAT_INFO[ format ];
             if ( !info ) { return Promise.reject( new Error( "Unknown format " + format ) ); }
-            btn = btn || this.bar.querySelector( "[data-format=\"" + format + "\"]" );
+            btn = btn || ( this.bar && this.bar.querySelector( "[data-format=\"" + format + "\"]" ) );
             if ( btn ) { btn.disabled = true; btn.classList.add( "is-busy" ); }
             const model = build( this.tpl, this.data, { name: this.meta.name || "Report", user: this.cfg.user } );
             const name = this.fileName( model, info.ext );
@@ -2068,11 +2114,11 @@
         registerRegion() {
             apex.region.create( this.id, {
                 type: "TechRevXReportDesigner",
-                refresh: () => this.loadData(),
-                generate: format => this.download( format ),
-                openTemplate: id => this.openTemplate( id ),
+                refresh: () => this.loadData().catch( e => this.showError( e ) ),
+                generate: ( format, template ) => this.generate( format, template ),
+                openTemplate: idOrName => this.openTemplate( idOrName ).catch( e => this.showError( e ) ),
                 getTemplate: () => clone( this.tpl ),
-                setTemplate: json => { this.setTemplate( typeof json === "string" ? JSON.parse( json ) : json ); this.saved = null; this.updateBar(); },
+                setTemplate: json => { this.setTemplate( typeof json === "string" ? JSON.parse( json ) : json ); this.saved = null; if ( !this.headless ) { this.updateBar(); } },
                 save: () => this.save(),
                 focus: () => { const f = this.el.querySelector( ".tx-Rd-tplSelect" ); if ( f ) { f.focus(); } }
             } );

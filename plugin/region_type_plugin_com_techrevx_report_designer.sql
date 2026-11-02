@@ -33,7 +33,7 @@ prompt APPLICATION 100 - UI Kits and Plugins
 -- Application Export:
 --   Application:     100
 --   Name:            UI Kits and Plugins
---   Date and Time:   18:03 Monday November 2, 2026
+--   Date and Time:   18:11 Monday November 2, 2026
 --   Exported By:     AAMIRKHANZ
 --   Flashback:       0
 --   Export Type:     Component Export
@@ -381,6 +381,10 @@ wwv_flow_imp_shared.create_plugin(
 ||'h page numbers, date format and currency symbol.',
 'Templates are saved in a table (default TX_REPORT_TEMPLATES, see the Reference page for the script), per Template Group and Owner; shared templates can be used by everyone and copied with Save As. Report mode shows the saved templates with a preview '
 ||'and download buttons only. Download Only mode shows nothing: your own buttons download one named template (Template and Download Buttons), reading the data again with the current page items at each click.',
+'How to use: 1) Designer region with your query (one row per detail line) and a Template Group, for example ORDERS; design the report and save it, for example as Invoice. 2) Where you print, a region with the same query filtered by a page item (in Pag'
+||'e Items to Submit), Mode Download Only, Template Invoice. 3) Give your button a Static ID such as PRINT_INVOICE, Action Defined by Dynamic Action, and enter #PRINT_INVOICE as Download Buttons: each click downloads the file for the current record (dat'
+||'a-format="docx" or "xlsx" on a button for Word or Excel).',
+'Grouping: in a table, Group rows by gives a heading row and a subtotal per value; in the Report tab, One section for each repeats the whole layout per value (one invoice per order), each on a new page and its own Excel sheet.',
 'Files are made in the browser with pdfmake 0.3.12, docx 9.12.0 and ExcelJS 4.4.0 (included, loaded on first download). Excel tables keep real numbers and dates, with SUBTOTAL formulas for totals.',
 'JavaScript: apex.region( "id" ).generate( "pdf" | "docx" | "xlsx", template ), refresh(), openTemplate( id or name ), getTemplate(), setTemplate( json ), save().',
 'Events: Report Designer - Report Generated and Template Saved.',
@@ -394,7 +398,7 @@ wwv_flow_imp_shared.create_plugin(
 'Output: PDF, Word (DOCX) and Excel (XLSX), made in the browser',
 'Templates: saved in a table, TX_REPORT_TEMPLATES by default',
 'License: pdfmake, docx and ExcelJS are licensed under the MIT License'))
-,p_files_version=>2461347180202
+,p_files_version=>2461347181016
 );
 wwv_flow_imp_shared.create_plugin_attr_group(
  p_id=>wwv_flow_imp.id(10801684415000846)

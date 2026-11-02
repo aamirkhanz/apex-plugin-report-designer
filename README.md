@@ -32,6 +32,8 @@ Report Designer lets users lay out their own reports inside your application and
 - **Source**: any region source (SQL query, table or REST source). Its rows are the report data; Page Items to Submit and Faceted Search filters apply.
 - **Designer**: drag blocks onto the page (heading, text, fields, table, image, line, space, page break), click a block to edit it, insert fields such as {CUSTOMER} or totals such as {SUM:AMOUNT|currency}. Tables have column formats, totals, row groups with subtotals, striped rows and borders. The report can make one section per value of a column (for example one invoice per order), each on a new page and, in Excel, on its own sheet. Page size, orientation, margins, colors, logo, header and footer with page numbers, date format and currency symbol.
 - Templates are saved in a table (default TX_REPORT_TEMPLATES, see the Reference page for the script), per Template Group and Owner; shared templates can be used by everyone and copied with Save As. Report mode shows the saved templates with a preview and download buttons only. Download Only mode shows nothing: your own buttons download one named template (Template and Download Buttons), reading the data again with the current page items at each click.
+- **How to use**: 1) Designer region with your query (one row per detail line) and a Template Group, for example ORDERS; design the report and save it, for example as Invoice. 2) Where you print, a region with the same query filtered by a page item (in Page Items to Submit), Mode Download Only, Template Invoice. 3) Give your button a Static ID such as PRINT_INVOICE, Action Defined by Dynamic Action, and enter #PRINT_INVOICE as Download Buttons: each click downloads the file for the current record (data-format="docx" or "xlsx" on a button for Word or Excel).
+- **Grouping**: in a table, Group rows by gives a heading row and a subtotal per value; in the Report tab, One section for each repeats the whole layout per value (one invoice per order), each on a new page and its own Excel sheet.
 - Files are made in the browser with pdfmake 0.3.12, docx 9.12.0 and ExcelJS 4.4.0 (included, loaded on first download). Excel tables keep real numbers and dates, with SUBTOTAL formulas for totals.
 - **JavaScript**: apex.region( "id" ).generate( "pdf" | "docx" | "xlsx", template ), refresh(), openTemplate( id or name ), getTemplate(), setTemplate( json ), save().
 - **Events**: Report Designer - Report Generated and Template Saved.
@@ -45,6 +47,22 @@ Report Designer lets users lay out their own reports inside your application and
 
 Everything the plug-in needs is inside the SQL file, including pdfmake and Roboto font and docx and ExcelJS; it loads nothing from other sites.
 
+## How to use
+
+Design a template once, then print it from any button, for the record on screen.
+
+1. **Write the query**: Add a Report Designer region (Mode Designer), for example on an admin page. Its source is the report data: one row per detail line, no GROUP BY (see the query below). Set Template Group to `ORDERS`.
+2. **Design and save the template**: Run the page, choose New and pick a starting point. Drag blocks onto the page, click a block to change it and insert fields with the { } button. Save it with a name, for example `Invoice`.
+3. **Add a hidden region where you print**: On any page, add another Report Designer region with the same query, filtered by your page item (`where o.order_id = :P5_ORDER_ID`), and put P5_ORDER_ID in Page Items to Submit. Set Mode to Download Only, Template Group to `ORDERS` and Template to `Invoice`. The region shows nothing.
+4. **Connect a button**: Give the button the Static ID `PRINT_INVOICE`, set its Action to Defined by Dynamic Action, and enter `#PRINT_INVOICE` as the region's Download Buttons. Each click reads the data again for the current P5_ORDER_ID and downloads the file. For Word or Excel, add `data-format="docx"` or `data-format="xlsx"` to the button's Custom Attributes.
+
+Or download from your own Dynamic Action (Execute JavaScript Code): `apex.region( "invoice" ).generate( "pdf" )`, or another template by name: `apex.region( "invoice" ).generate( "xlsx", "Sales by customer" )`.
+
+Grouping happens in the designer, so the query stays plain:
+
+- **Rows in groups**: select a table and set Group rows by, for example Customer: a heading row for each customer, a subtotal under each group and a grand total.
+- **One section per record**: in the Report tab, set One section for each, for example Order no: the whole layout repeats for each order (one invoice per order), each on a new page and, in Excel, on its own sheet.
+
 ## Example
 
 ```sql
@@ -53,10 +71,11 @@ l.product, l.quantity, l.unit_price, l.quantity * l.unit_price as amount
 from orders o
 join customers c on c.customer_id = o.customer_id
 join order_lines l on l.order_id = o.order_id
+where :P5_ORDER_ID is null or o.order_id = :P5_ORDER_ID
 order by o.order_no, l.line_no
 ```
 
-Every column is a field in the designer. Page Items to Submit and Faceted Search filters narrow the rows, so the same template prints one order, one month or one region.
+Every column is a field in the designer. Page Items to Submit and Faceted Search filters narrow the rows, so the same template prints one order, one month or everything. A template works with any query that has the columns it uses.
 
 ## Attributes
 
@@ -109,23 +128,6 @@ create index tx_report_templates_i1 on tx_report_templates ( template_group, own
 ```
 
 To give everyone a ready-made template, save it in the designer, then mark it shared: `update tx_report_templates set is_shared = 'Y' where template_id = 1`.
-
-## Print a template from any button
-
-Design and save the template once (for example **Invoice** in Template Group ORDERS). Then, on any page:
-
-1. **Add a Report Designer region**: Its source is the same query, filtered by a page item, for example `where o.order_id = :P5_ORDER_ID`. Put P5_ORDER_ID in Page Items to Submit.
-2. **Set Mode to Download Only**: Template Group `ORDERS`, Template `Invoice`, Default Format PDF. The region shows nothing on the page.
-3. **Connect your button**: Give the button a Static ID such as `PRINT_INVOICE`, set its Action to Defined by Dynamic Action, and enter `#PRINT_INVOICE` as Download Buttons. Add `data-format="xlsx"` to a button's Custom Attributes for Excel, or `docx` for Word.
-
-Each click reads the data again with the current page items, so the file always matches the record on screen. Without the Download Buttons attribute, call it from any Dynamic Action:
-
-```javascript
-apex.region( "invoice" ).generate( "pdf" );              // the region's template
-apex.region( "invoice" ).generate( "xlsx", "Invoice" );  // another template, by name or ID
-```
-
-Grouping works as in the designer: a table's Group rows by gives heading rows and subtotals; One section for each repeats the whole layout per value, for example one invoice per order.
 
 ## Fields in texts
 
